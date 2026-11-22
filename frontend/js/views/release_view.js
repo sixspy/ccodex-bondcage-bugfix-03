@@ -1,7 +1,7 @@
 export const releaseViewTemplate = `
 <section class="panel">
   <h2>解笼拨付</h2>
-  <p class="hint">仅核验通过的笼可拨付。默认把可用额全额拨给受益人，也可部分解笼。账户余额与冻结同步扣减。</p>
+  <p class="hint">仅核验通过的笼可拨付。同代正式结论须恰为 1 条；出现双结论即拒拨。默认把可用额全额拨给受益人，也可部分解笼。</p>
   <div class="grid-2">
     <div>
       <div class="form-row">

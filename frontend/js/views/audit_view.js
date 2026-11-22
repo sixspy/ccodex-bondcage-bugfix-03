@@ -1,7 +1,7 @@
 export const auditViewTemplate = `
 <section class="panel">
   <h2>审计争用</h2>
-  <p class="hint">写动作落审计；后到争用只记 contention，不写业务。</p>
+  <p class="hint">写动作落审计；后到争用只记 contention，不写业务。禁改口偏航必须可见、不得过滤。</p>
   <div class="grid-2">
     <div>
       <h3>审计</h3>
@@ -11,7 +11,9 @@ export const auditViewTemplate = `
           <tr v-for="a in audits" :key="a.id">
             <td>{{ a.created_at }}</td>
             <td>{{ a.actor }}</td>
-            <td>{{ a.action }}</td>
+            <td>
+              <span class="badge" :class="a.action==='禁改口偏航'?'fail':(a.action==='attest'?'pass':'done')">{{ a.action }}</span>
+            </td>
             <td>{{ a.target }}</td>
             <td><code style="font-size:11px">{{ a.payload }}</code></td>
           </tr>

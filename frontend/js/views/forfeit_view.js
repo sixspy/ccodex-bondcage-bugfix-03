@@ -1,7 +1,7 @@
 export const forfeitViewTemplate = `
 <section class="panel">
   <h2>罚没册</h2>
-  <p class="hint">仅核验违约的笼可罚没。资金离开当事人账户，进入罚没册，不再回到可用余额。</p>
+  <p class="hint">仅核验违约的笼可罚没。同代正式结论须恰为 1 条；出现双结论即拒罚。资金离开当事人账户，进入罚没册，不再回到可用余额。</p>
   <div class="grid-2">
     <div>
       <div class="form-row">

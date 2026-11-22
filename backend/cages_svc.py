@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from auth import AuthHeader, require_user, require_writer
-from db import connect, now_iso, write_audit
+from db import connect, generation_conclusion_summary, now_iso, write_audit
 from locks import release, require_lock
 from models import CageFreezeIn
 
@@ -28,7 +28,19 @@ def list_cages(authorization: AuthHeader = None, status: str | None = None):
             ).fetchall()
         else:
             rows = conn.execute("SELECT * FROM cages ORDER BY id DESC").fetchall()
-        return {"items": [dict(r) for r in rows]}
+        items = []
+        for r in rows:
+            item = dict(r)
+            summary = generation_conclusion_summary(
+                conn, r["id"], int(r["generation"])
+            )
+            # 禁改口口径：本代是否已有正式结论，页面据此只列可核验笼。
+            item["has_conclusion"] = summary["count"] > 0
+            item["conclusion"] = summary["conclusion"]
+            item["conclusion_unique"] = summary["unique"]
+            item["conclusion_count"] = summary["count"]
+            items.append(item)
+        return {"items": items}
 
 
 @router.get("/api/cages/{cage_id}")
@@ -52,6 +64,9 @@ def get_cage(cage_id: int, authorization: AuthHeader = None):
         ).fetchall()
         return {
             "cage": dict(cage),
+            "current_generation_conclusion": generation_conclusion_summary(
+                conn, cage_id, int(cage["generation"])
+            ),
             "attestations": [dict(a) for a in atts],
             "releases": [dict(r) for r in rels],
             "forfeits": [dict(f) for f in fors],

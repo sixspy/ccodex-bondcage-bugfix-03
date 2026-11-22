@@ -361,3 +361,14 @@ th {
   margin-bottom: 12px;
   font-size: 13px;
 }
+
+.fate-banner {
+  border: 2px solid var(--bad);
+  background: #fee2e2;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.fate-banner strong { color: var(--bad); }
+.fate-banner p { margin: 6px 0 0; }

@@ -159,6 +159,16 @@ CREATE TABLE IF NOT EXISTS deposit_ledger(
   created_at TEXT NOT NULL,
   actor TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS attest_fate(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  path TEXT NOT NULL,
+  statement TEXT NOT NULL,
+  forbidden TEXT NOT NULL,
+  locked INTEGER NOT NULL DEFAULT 1,
+  locked_on TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 """
 
 
@@ -255,6 +265,72 @@ def seed_cages(conn: sqlite3.Connection) -> None:
                 pass
 
 
+ATTEST_FATE_PATH = "甲"
+
+ATTEST_FATE_STATEMENT = (
+    "核验禁改口命运说明（甲路径，当日锁死）：本代已有正式结论则二次核验"
+    "正式零增并拒收；乙路径（二次只追加只读意见）与第三路径一律禁止；"
+    "甲乙不得混用。任何偏离本说明的写入记「禁改口偏航」并拒写。"
+)
+ATTEST_FATE_FORBIDDEN = "乙路径只读意见追加；第三路径；甲乙混用"
+
+
+def seed_attest_fate(conn: sqlite3.Connection) -> None:
+    """命运说明只种子一次；一旦写入即当日锁死，不可在业务面改写。"""
+    exists = conn.execute("SELECT id FROM attest_fate LIMIT 1").fetchone()
+    if exists:
+        return
+    from datetime import date
+
+    conn.execute(
+        """INSERT INTO attest_fate(path,statement,forbidden,locked,locked_on,actor,created_at)
+           VALUES (?,?,?,?,?,?,?)""",
+        (
+            ATTEST_FATE_PATH,
+            ATTEST_FATE_STATEMENT,
+            ATTEST_FATE_FORBIDDEN,
+            1,
+            date.today().isoformat(),
+            "seed",
+            now_iso(),
+        ),
+    )
+
+
+def load_attest_fate(conn: sqlite3.Connection) -> sqlite3.Row:
+    row = conn.execute("SELECT * FROM attest_fate ORDER BY id LIMIT 1").fetchone()
+    if row is None:
+        seed_attest_fate(conn)
+        row = conn.execute("SELECT * FROM attest_fate ORDER BY id LIMIT 1").fetchone()
+    return row
+
+
+def generation_conclusions(
+    conn: sqlite3.Connection, cage_id: int, generation: int
+) -> list[sqlite3.Row]:
+    """同笼同代的正式结论集合（禁改口口径的唯一真相源）。"""
+    return conn.execute(
+        """SELECT * FROM attestations
+           WHERE cage_id=? AND attest_gen=? ORDER BY id""",
+        (cage_id, generation),
+    ).fetchall()
+
+
+def generation_conclusion_summary(
+    conn: sqlite3.Connection, cage_id: int, generation: int
+) -> dict:
+    rows = generation_conclusions(conn, cage_id, generation)
+    outcomes = [r["outcome"] for r in rows]
+    return {
+        "generation": generation,
+        "count": len(rows),
+        "outcomes": outcomes,
+        "unique": len(rows) == 1,
+        "conclusion": outcomes[0] if len(rows) == 1 else None,
+        "attestation_ids": [r["id"] for r in rows],
+    }
+
+
 def seed_attest_samples(conn: sqlite3.Connection) -> None:
     """为已冻结笼预置一条待核验说明，便于页面冷启动有可读业务。"""
     rows = conn.execute(
@@ -275,6 +351,7 @@ def init_db() -> None:
         seed_users(conn)
         seed_bonds(conn)
         seed_cages(conn)
+        seed_attest_fate(conn)
         seed_attest_samples(conn)
         conn.commit()
 

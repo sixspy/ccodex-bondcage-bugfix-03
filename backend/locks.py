@@ -15,24 +15,37 @@ class LockIn(BaseModel):
     action: str = "acquire"
 
 
-def try_acquire(conn, lock_key: str, holder: str) -> bool:
-    now = now_iso()
-    row = conn.execute(
-        "SELECT holder FROM cage_locks WHERE lock_key=?", (lock_key,)
-    ).fetchone()
-    if row is None:
-        conn.execute(
-            "INSERT INTO cage_locks(lock_key,holder,acquired_at) VALUES (?,?,?)",
-            (lock_key, holder, now),
-        )
-        return True
-    if row["holder"] == holder:
-        return True
+def _log_contention(conn, lock_key: str, actor: str, detail: str) -> None:
     conn.execute(
         """INSERT INTO contention_log(lock_key,actor,action,detail,created_at)
            VALUES (?,?,?,?,?)""",
-        (lock_key, holder, "争用", f"持有者={row['holder']}", now),
+        (lock_key, actor, "争用", detail, now_iso()),
     )
+
+
+def try_acquire(conn, lock_key: str, holder: str) -> bool:
+    """原子占笼锁；抢不到者只记争用，争用记录独立落盘（随后回滚也不丢）。
+
+    用 INSERT OR IGNORE 做「单语句抢占」：并发下由 SQLite 写锁串行化，
+    不会出现两条连接同时读到「无持有者」后各自插入的双持。
+    """
+    now = now_iso()
+    cur = conn.execute(
+        "INSERT OR IGNORE INTO cage_locks(lock_key,holder,acquired_at) VALUES (?,?,?)",
+        (lock_key, holder, now),
+    )
+    if cur.rowcount == 1:
+        return True
+    row = conn.execute(
+        "SELECT holder FROM cage_locks WHERE lock_key=?", (lock_key,)
+    ).fetchone()
+    if row is not None and row["holder"] == holder:
+        # 同持有者重入：不记争用。
+        return True
+    _log_contention(
+        conn, lock_key, holder, f"持有者={row['holder'] if row else 'unknown'}"
+    )
+    conn.commit()
     return False
 
 
@@ -46,6 +59,8 @@ def release(conn, lock_key: str, holder: str) -> None:
 def require_lock(conn, lock_key: str, holder: str) -> None:
     if not try_acquire(conn, lock_key, holder):
         raise HTTPException(409, "争用：后到只记争用，不写业务")
+    # 占锁即落盘：并发下后到连接必须能看见持有者，否则同代双写。
+    conn.commit()
 
 
 @router.get("/api/locks")

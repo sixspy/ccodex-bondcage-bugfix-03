@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from auth import AuthHeader, require_user, require_writer
-from db import connect, now_iso, write_audit
+from db import connect, generation_conclusions, now_iso, write_audit
 from locks import release, require_lock
 from models import ForfeitIn
 
@@ -38,13 +38,15 @@ def do_forfeit(body: ForfeitIn, authorization: AuthHeader = None):
                 raise HTTPException(404, "笼不存在")
             if cage["status"] != "核验违约":
                 raise HTTPException(409, "仅核验违约的笼可罚没")
-            att = conn.execute(
-                """SELECT * FROM attestations
-                   WHERE cage_id=? AND attest_gen=? AND outcome='违约'
-                   ORDER BY id DESC LIMIT 1""",
-                (body.cage_id, int(cage["generation"])),
-            ).fetchone()
-            if not att:
+            gen = int(cage["generation"])
+            conclusions = generation_conclusions(conn, body.cage_id, gen)
+            if len(conclusions) != 1:
+                raise HTTPException(
+                    409,
+                    f"同代正式结论须恰为 1 条（当前 {len(conclusions)} 条），禁止罚没",
+                )
+            att = conclusions[0]
+            if att["outcome"] != "违约":
                 raise HTTPException(409, "缺少与笼代对齐的违约核验")
             avail = float(cage["available"])
             amount = float(body.amount) if body.amount is not None else avail
@@ -53,7 +55,6 @@ def do_forfeit(body: ForfeitIn, authorization: AuthHeader = None):
             if amount > avail + 1e-9:
                 raise HTTPException(409, "罚没金额超过笼可用额")
             now = now_iso()
-            gen = int(cage["generation"])
             ref = f"FOR-{cage['cage_code']}-g{gen}"
             # 同笼同代禁止重复罚没整额撞车
             existing = conn.execute(

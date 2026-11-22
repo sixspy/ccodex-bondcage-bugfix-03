@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from auth import AuthHeader, require_user, require_writer
-from db import connect, now_iso, write_audit
+from db import connect, generation_conclusions, now_iso, write_audit
 from locks import release, require_lock
 from models import ReleaseIn
 
@@ -38,14 +38,16 @@ def do_release(body: ReleaseIn, authorization: AuthHeader = None):
                 raise HTTPException(404, "笼不存在")
             if cage["status"] != "核验通过":
                 raise HTTPException(409, "仅核验通过的笼可解笼拨付")
-            # 核验结论必须对齐当前笼代
-            att = conn.execute(
-                """SELECT * FROM attestations
-                   WHERE cage_id=? AND attest_gen=? AND outcome='通过'
-                   ORDER BY id DESC LIMIT 1""",
-                (body.cage_id, int(cage["generation"])),
-            ).fetchone()
-            if not att:
+            # 同代禁改口：只认唯一一条正式结论，双结论一律拒拨。
+            gen = int(cage["generation"])
+            conclusions = generation_conclusions(conn, body.cage_id, gen)
+            if len(conclusions) != 1:
+                raise HTTPException(
+                    409,
+                    f"同代正式结论须恰为 1 条（当前 {len(conclusions)} 条），禁止解笼",
+                )
+            att = conclusions[0]
+            if att["outcome"] != "通过":
                 raise HTTPException(409, "缺少与笼代对齐的通过核验")
             avail = float(cage["available"])
             amount = float(body.amount) if body.amount is not None else avail
@@ -55,7 +57,6 @@ def do_release(body: ReleaseIn, authorization: AuthHeader = None):
                 raise HTTPException(409, "拨付金额超过笼可用额")
             payee = body.payee or cage["beneficiary"]
             now = now_iso()
-            gen = int(cage["generation"])
             ref = f"REL-{cage['cage_code']}-g{gen}-{int(now.replace(':', '').replace('-', '').replace('T', '')[-8:])}"
             cur = conn.execute(
                 """INSERT INTO releases(cage_id,amount,payee,cage_generation,status,release_ref,created_at)

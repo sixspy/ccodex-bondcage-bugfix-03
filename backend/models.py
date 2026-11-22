@@ -28,6 +28,8 @@ class AttestIn(BaseModel):
     cage_id: int
     outcome: str
     evidence: str = ""
+    # 命运说明锁死为甲路径：只允许「正式」。乙路径/第三路径提交即记偏航拒写。
+    mode: str = "正式"
 
 
 class ReleaseIn(BaseModel):

@@ -1,4 +1,4 @@
-"""审计只读面。"""
+"""审计只读面：禁改口偏航与正式核验均须可见，不得过滤掩盖改口。"""
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -17,14 +17,8 @@ def list_audit(authorization: AuthHeader = None, limit: int = 100):
         rows = conn.execute(
             "SELECT * FROM audit_trail ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
+        # 禁改口偏航全程可见：审计面不得滤掉任何改口/偏航记录。
         items = [dict(r) for r in rows]
-        # BUGFIX-03 埋雷：二次核验审计被滤掉，掩盖改口
-        items = [
-            i
-            for i in items
-            if i.get("action") != "attest"
-            or "改口" not in str(i.get("payload", ""))
-        ]
         return {"items": items}
 
 

@@ -48,6 +48,11 @@ export const cagesViewTemplate = `
           <div class="amt">{{ fmt(c.available) }} / {{ fmt(c.amount) }}</div>
           <div>{{ c.contract_no }} · 代{{ c.generation }}</div>
           <div>{{ c.party_key }} → {{ c.beneficiary }}</div>
+          <div>
+            本代结论：
+            <span v-if="c.has_conclusion" class="badge" :class="c.conclusion==='通过'?'pass':'fail'">{{ c.conclusion }}（唯一·禁改口）</span>
+            <span v-else class="badge frozen">未定论</span>
+          </div>
         </div>
       </div>
     </div>
@@ -59,6 +64,14 @@ export const cagesViewTemplate = `
       <tbody>
         <tr><td>状态</td><td><span class="badge" :class="statusClass(cageDetail.cage.status)">{{ cageDetail.cage.status }}</span></td></tr>
         <tr><td>可用 / 总额</td><td>{{ fmt(cageDetail.cage.available) }} / {{ fmt(cageDetail.cage.amount) }}</td></tr>
+        <tr>
+          <td>本代正式结论</td>
+          <td>
+            {{ cageDetail.current_generation_conclusion.count }} 条 ·
+            唯一 {{ cageDetail.current_generation_conclusion.unique }}
+            <span v-if="cageDetail.current_generation_conclusion.conclusion" class="badge" :class="cageDetail.current_generation_conclusion.conclusion==='通过'?'pass':'fail'">{{ cageDetail.current_generation_conclusion.conclusion }}</span>
+          </td>
+        </tr>
         <tr><td>核验条数</td><td>{{ cageDetail.attestations.length }}</td></tr>
         <tr><td>拨付条数</td><td>{{ cageDetail.releases.length }}</td></tr>
         <tr><td>罚没条数</td><td>{{ cageDetail.forfeits.length }}</td></tr>

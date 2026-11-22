@@ -42,6 +42,7 @@ export function createApi(getToken, onUnauthorized) {
     freeze: (data) =>
       req("/api/cages/freeze", { method: "POST", body: JSON.stringify(data) }),
     attestations: () => req("/api/attestations"),
+    attestFate: () => req("/api/attest-fate"),
     attest: (data) =>
       req("/api/attestations", { method: "POST", body: JSON.stringify(data) }),
     releases: () => req("/api/releases"),

@@ -48,6 +48,7 @@ createApp({
     const selectedCage = ref(null);
     const topupJobs = ref([]);
     const splitJobs = ref([]);
+    const attestFate = ref(null);
 
     const bondForm = ref({
       party_key: "P-NEW",
@@ -131,14 +132,28 @@ createApp({
     const frozenCages = computed(() =>
       cages.value.filter((c) => c.status === "已冻结")
     );
+    // 可核验笼：仍已冻结且当前笼代尚无正式结论（禁改口口径）。
+    const attestableCages = computed(() =>
+      cages.value.filter(
+        (c) => c.status === "已冻结" && !c.has_conclusion && c.available > 0
+      )
+    );
     const passCages = computed(() =>
       cages.value.filter(
-        (c) => c.status === "核验通过" || c.status === "部分解笼"
+        (c) =>
+          (c.status === "核验通过" || c.status === "部分解笼") &&
+          c.has_conclusion &&
+          c.conclusion_unique &&
+          c.conclusion === "通过"
       )
     );
     const failCages = computed(() =>
       cages.value.filter(
-        (c) => c.status === "核验违约" || c.status === "部分罚没"
+        (c) =>
+          (c.status === "核验违约" || c.status === "部分罚没") &&
+          c.has_conclusion &&
+          c.conclusion_unique &&
+          c.conclusion === "违约"
       )
     );
 
@@ -195,6 +210,7 @@ createApp({
           lk,
           tj,
           sj,
+          fate,
         ] = await Promise.all([
           api.bonds(),
           api.cages(),
@@ -207,6 +223,7 @@ createApp({
           api.locks(),
           api.topupJobs(),
           api.splitJobs(),
+          api.attestFate(),
         ]);
         bonds.value = b.items || [];
         cages.value = c.items || [];
@@ -219,8 +236,17 @@ createApp({
         locks.value = lk.items || [];
         topupJobs.value = tj.items || [];
         splitJobs.value = sj.items || [];
-        if (!attestForm.value.cage_id && frozenCages.value.length) {
-          attestForm.value.cage_id = frozenCages.value[0].id;
+        attestFate.value = fate || null;
+        if (!attestForm.value.cage_id && attestableCages.value.length) {
+          attestForm.value.cage_id = attestableCages.value[0].id;
+        }
+        if (
+          attestForm.value.cage_id &&
+          !attestableCages.value.some((x) => x.id === attestForm.value.cage_id)
+        ) {
+          attestForm.value.cage_id = attestableCages.value.length
+            ? attestableCages.value[0].id
+            : 0;
         }
         if (!releaseForm.value.cage_id && passCages.value.length) {
           releaseForm.value.cage_id = passCages.value[0].id;
@@ -301,12 +327,24 @@ createApp({
     async function doAttest() {
       clearFlash();
       try {
-        if (!attestForm.value.cage_id) throw new Error("请选择笼");
-        await api.attest(attestForm.value);
-        flashOk("核验已写入");
+        if (!attestForm.value.cage_id) throw new Error("请选择可核验笼");
+        await api.attest({
+          cage_id: attestForm.value.cage_id,
+          outcome: attestForm.value.outcome,
+          evidence: attestForm.value.evidence,
+          mode: "正式",
+        });
+        flashOk("正式核验已写入（同代定论，改口一律拒收）");
         await refresh();
       } catch (e) {
         flashErr(e);
+        // 拒收后把偏航记录拉回审计面，便于当页看到「禁改口偏航」。
+        try {
+          const au = await api.audit();
+          audits.value = au.items || [];
+        } catch {
+          /* 审计刷新失败不覆盖拒收提示 */
+        }
       }
     }
 
@@ -421,6 +459,8 @@ createApp({
       depositForm,
       freezeForm,
       attestForm,
+      attestFate,
+      attestableCages,
       releaseForm,
       forfeitForm,
       topupForm,
